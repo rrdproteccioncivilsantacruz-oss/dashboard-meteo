@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tablero de Control · PC Santa Cruz</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0e14; --surface:#111820; --border:#1e2d3d;
+  --accent:#f97316; --accent2:#22d3ee; --accent3:#4ade80;
+  --danger:#ef4444; --warn:#eab308; --text:#e2e8f0; --muted:#64748b; --card:#151e2a;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:12px;overflow-x:hidden}
+
+header{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:10px}
+.logo{width:32px;height:32px;border-radius:6px;background:linear-gradient(135deg,var(--accent),#ea580c);display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Bebas Neue';font-size:14px}
+.title h1{font-family:'Bebas Neue';font-size:18px;letter-spacing:2px;line-height:1}
+.title p{color:var(--muted);font-family:'IBM Plex Mono';font-size:10px;margin-top:2px}
+.clock{margin-left:auto;text-align:right;font-family:'IBM Plex Mono'}
+.clock .big{font-family:'IBM Plex Mono';font-size:18px;color:var(--accent2);font-weight:500;letter-spacing:1px;line-height:1}
+.clock .small{color:var(--muted);font-size:10px;margin-top:2px}
+
+.section-label{font-size:10px;color:var(--muted);margin:6px 0 6px;letter-spacing:1.5px;text-transform:uppercase}
+
+.st-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+.st-card{background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:12px;text-align:center;transition:.2s}
+.st-card.lvl-red{border-color:var(--danger);box-shadow:0 0 0 2px rgba(239,68,68,.15)}
+.st-card.lvl-orange{border-color:#ea580c;box-shadow:0 0 0 2px rgba(234,88,12,.15)}
+.st-card.lvl-yellow{border-color:var(--warn)}
+.st-card.lvl-green{border-color:var(--accent3)}
+.st-card.lvl-loading{border-color:var(--border)}
+
+.st-name{font-family:'Bebas Neue';font-size:18px;letter-spacing:2px;color:var(--accent);margin-bottom:2px;line-height:1}
+.st-meta{font-size:9px;color:var(--muted);margin-bottom:8px;font-family:'IBM Plex Mono'}
+
+.st-clock{width:100%;max-width:160px;margin:0 auto 8px;display:block}
+
+.st-mini{display:grid;grid-template-columns:repeat(2,1fr);gap:4px;font-family:'IBM Plex Mono';margin-bottom:6px}
+.st-mini .cell{background:var(--card);border-radius:4px;padding:4px 6px;text-align:left}
+.st-mini .k{font-size:8px;color:var(--muted);letter-spacing:.5px}
+.st-mini .v{font-size:12px;color:var(--text)}
+.st-mini .v.hot{color:var(--danger)}
+
+.st-badge{font-size:9px;padding:4px 6px;border-radius:4px;font-weight:500;letter-spacing:.5px}
+.st-badge.red{background:#1a0f0f;border:1px solid var(--danger);color:var(--danger)}
+.st-badge.orange{background:#1a1208;border:1px solid #ea580c;color:#ea580c}
+.st-badge.yellow{background:#1a1508;border:1px solid var(--warn);color:var(--warn)}
+.st-badge.green{background:#0f1a10;border:1px solid var(--accent3);color:var(--accent3)}
+.st-badge.loading{background:var(--card);border:1px solid var(--border);color:var(--muted)}
+
+.st-error{font-size:10px;color:var(--muted);padding:40px 0;font-family:'IBM Plex Mono'}
+
+.mp-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.mp-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;text-decoration:none;color:inherit;display:flex;flex-direction:column;cursor:pointer;transition:.2s}
+.mp-card:hover{border-color:var(--accent)}
+.mp-card.current{border-color:var(--accent);border-width:1.5px}
+.mp-card.smn{border-color:var(--danger);border-width:1.5px}
+.mp-head{padding:6px 10px;background:var(--card);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.mp-card.current .mp-head{background:#1a1308;border-bottom-color:var(--accent)}
+.mp-card.smn .mp-head{background:#1a0f0f;border-bottom-color:var(--danger)}
+.mp-title{font-family:'Bebas Neue';font-size:13px;letter-spacing:1px;color:var(--muted)}
+.mp-card.current .mp-title{color:var(--accent)}
+.mp-card.smn .mp-title{color:var(--danger)}
+.mp-date{font-size:9px;color:var(--muted);font-family:'IBM Plex Mono'}
+.mp-card.current .mp-date{color:var(--accent)}
+.mp-card.smn .mp-date{color:var(--danger)}
+.mp-body{aspect-ratio:1/1;background:#0a1420;position:relative;overflow:hidden}
+.mp-body img{width:100%;height:100%;object-fit:cover;display:block;background:#fff}
+.mp-body iframe{width:100%;height:100%;border:0;background:#0a1420}
+.mp-body .schematic{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.mp-body .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;color:var(--muted);font-family:'IBM Plex Mono';font-size:10px;padding:10px;text-align:center;pointer-events:none;opacity:0;transition:opacity .3s}
+.mp-body .overlay-visible{opacity:1;background:linear-gradient(to bottom,transparent 0%,transparent 50%,rgba(10,14,20,.92) 85%);color:var(--accent2)}
+.mp-foot{padding:4px 8px;font-size:9px;color:var(--muted);text-align:center;background:var(--bg);font-family:'IBM Plex Mono'}
+.mp-card.current .mp-foot{color:var(--accent)}
+.mp-card.smn .mp-foot{color:var(--danger);font-weight:500}
+
+.mp-card.drake{border-color:var(--accent2);border-width:1.5px}
+.mp-card.drake .mp-head{background:#0f1a20;border-bottom-color:var(--accent2)}
+.mp-card.drake .mp-title{color:var(--accent2)}
+.mp-card.drake .mp-date{color:var(--accent2)}
+
+footer{margin-top:12px;padding:10px;text-align:center;color:var(--muted);font-family:'IBM Plex Mono';font-size:9px;border-top:1px solid var(--border);line-height:1.6}
+footer a{color:var(--accent2);text-decoration:none}
+
+.quick-links{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-top:10px}
+.quick-links a{background:var(--surface);border:1px solid var(--border);color:var(--muted);padding:6px 12px;border-radius:6px;text-decoration:none;font-family:'IBM Plex Mono';font-size:10px;letter-spacing:.5px;transition:.15s}
+.quick-links a:hover{border-color:var(--accent2);color:var(--accent2)}
+
+@media(max-width:900px){
+  .st-grid,.mp-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:520px){
+  .st-grid,.mp-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <img src="data:image/png;base64,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" style="width:48px;height:48px;object-fit:contain;border-radius:6px">
+  <div class="title">
+    <h1>TABLERO DE CONTROL · CROSS-CHECK METEO</h1>
+    <p>Protección Civil Santa Cruz · L10 · datos reales vs SMN</p>
+  </div>
+  <div class="clock">
+    <div class="big" id="utcTime">--:--Z</div>
+    <div class="small"><span id="localTime">--:-- local</span></div>
+  </div>
+</header>
+
+<div class="section-label">4 estaciones · observación en tiempo real</div>
+
+<div class="st-grid" id="stGrid">
+  <div class="st-card lvl-loading" data-icao="SAWG">
+    <div class="st-name">RÍO GALLEGOS</div>
+    <div class="st-meta">SAWG · cargando…</div>
+    <div class="st-error">Cargando METAR…</div>
+  </div>
+  <div class="st-card lvl-loading" data-icao="SCBA">
+    <div class="st-name">BALMACEDA CL</div>
+    <div class="st-meta">SCBA · cargando…</div>
+    <div class="st-error">Cargando METAR…</div>
+  </div>
+  <div class="st-card lvl-loading" data-icao="SAVC">
+    <div class="st-name">COMODORO</div>
+    <div class="st-meta">SAVC · cargando…</div>
+    <div class="st-error">Cargando METAR…</div>
+  </div>
+  <div class="st-card lvl-loading" data-icao="SAWC">
+    <div class="st-name">EL CALAFATE</div>
+    <div class="st-meta">SAWC · cargando…</div>
+    <div class="st-error">Cargando METAR…</div>
+  </div>
+</div>
+
+<div class="section-label">3 mapas patagonia (AR00) · 1 mapa paso drake (AN00) · GFS actualizado</div>
+
+<div class="mp-grid" id="mpGrid"></div>
+
+<div class="quick-links">
+  <a href="https://www.smn.gob.ar/alertas" target="_blank">Alertas SMN ↗</a>
+  <a href="https://www.smn.gob.ar/radar" target="_blank">Radar SMN ↗</a>
+  <a href="https://www.windy.com/-50.500/-69.000?-50.500,-69.000,6" target="_blank">Windy ↗</a>
+  <a href="https://earth.nullschool.net/#current/wind/surface/level/orthographic=-70,-50,2000" target="_blank">Earth ↗</a>
+  <a href="https://www.inpres.gob.ar/desktop/" target="_blank">INPRES ↗</a>
+  <a href="https://www.smn.gob.ar/indices_peligro_fuego" target="_blank">Peligro Fuego ↗</a>
+</div>
+
+<footer>
+  Fuentes: <strong>CheckWX</strong> (<a href="https://www.checkwxapi.com" target="_blank">checkwxapi.com</a>) ·
+  <strong>Ogimet</strong> · <strong>SMN Argentina</strong> · <strong>NOAA GFS</strong><br>
+  Subsecretaría de Protección Civil y Abordaje Integral de Emergencias y Catástrofes — Santa Cruz<br>
+  Gobernador Lista 327, Río Gallegos · 103 / 420042 / 435422
+</footer>
+
+<script>
+const CHECKWX_KEY = 'a9172094849d42ff82cbd41e17a532df';
+
+const ESTACIONES = [
+  {icao:'SAWG', nombre:'RÍO GALLEGOS'},
+  {icao:'SCBA', nombre:'BALMACEDA CL'},
+  {icao:'SAVC', nombre:'COMODORO'},
+  {icao:'SAWC', nombre:'EL CALAFATE'},
+];
+
+function ktToKmh(kt){ return kt != null ? Math.round(kt * 1.852) : null; }
+
+function clasificarViento(ktSostenido, ktRafaga){
+  const kmh = Math.max(ktToKmh(ktSostenido)||0, ktToKmh(ktRafaga)||0);
+  if (kmh > 90)  return {nivel:'red',    label:'NIVEL ROJO · viento extremo'};
+  if (kmh > 75)  return {nivel:'orange', label:'NIVEL NARANJA · viento peligroso'};
+  if (kmh > 50)  return {nivel:'yellow', label:'NIVEL AMARILLO · viento fuerte'};
+  return {nivel:'green', label:'NIVEL VERDE · normal'};
+}
+
+function colorPorNivel(nivel){
+  return {red:'#ef4444', orange:'#ea580c', yellow:'#eab308', green:'#4ade80'}[nivel] || '#64748b';
+}
+
+function formatHora(iso){
+  if(!iso) return '--:--Z';
+  const d = new Date(iso);
+  return String(d.getUTCDate()).padStart(2,'0')+' '+String(d.getUTCHours()).padStart(2,'0')+':'+String(d.getUTCMinutes()).padStart(2,'0')+'Z';
+}
+
+function renderClock(dir, kmhViento, nivel, variable){
+  const color = colorPorNivel(nivel);
+  const dirDisplay = variable ? 'VAR' : (dir!=null ? dir+'°' : '---');
+  
+  let needleHtml = '';
+  if (variable || dir == null || kt < 1) {
+    needleHtml = `<circle cx="70" cy="70" r="5" fill="none" stroke="${color}" stroke-width="1.2" stroke-dasharray="2 2" opacity=".6"/>`;
+  } else {
+    const rotAngle = dir;
+    needleHtml = `
+      <g transform="rotate(${rotAngle} 70 70)">
+        <line x1="70" y1="70" x2="70" y2="22" stroke="${color}" stroke-width="3.5" stroke-linecap="round"/>
+        <polygon points="70,18 65,28 75,28" fill="${color}"/>
+      </g>`;
+  }
+  
+  const kmhDisplay = kmhViento == null ? '--' : Math.round(kmhViento);
+  
+  return `
+  <svg class="st-clock" viewBox="0 0 140 140">
+    <circle cx="70" cy="70" r="65" fill="#0a0e14" stroke="#2a3a52" stroke-width="2"/>
+    <circle cx="70" cy="70" r="58" fill="none" stroke="#1e2d3d" stroke-width="0.5"/>
+    <g stroke="#64748b" stroke-width="0.8">
+      <line x1="70" y1="12" x2="70" y2="18"/>
+      <line x1="128" y1="70" x2="122" y2="70"/>
+      <line x1="70" y1="128" x2="70" y2="122"/>
+      <line x1="12" y1="70" x2="18" y2="70"/>
+    </g>
+    <g stroke="#1e2d3d" stroke-width="0.5">
+      <line x1="110" y1="30" x2="107" y2="33"/>
+      <line x1="110" y1="110" x2="107" y2="107"/>
+      <line x1="30" y1="110" x2="33" y2="107"/>
+      <line x1="30" y1="30" x2="33" y2="33"/>
+    </g>
+    <text x="70" y="24" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="monospace" font-weight="500">N</text>
+    <text x="116" y="74" text-anchor="middle" fill="#64748b" font-size="9" font-family="monospace">E</text>
+    <text x="70" y="120" text-anchor="middle" fill="#64748b" font-size="9" font-family="monospace">S</text>
+    <text x="24" y="74" text-anchor="middle" fill="#64748b" font-size="9" font-family="monospace">W</text>
+    ${needleHtml}
+    <circle cx="70" cy="70" r="32" fill="#0a0e14" stroke="#1e2d3d" stroke-width="1"/>
+    <text x="70" y="64" text-anchor="middle" fill="${color}" font-size="22" font-family="IBM Plex Mono, monospace" font-weight="500">${kmhDisplay}</text>
+    <text x="70" y="76" text-anchor="middle" fill="${color}" font-size="8" font-family="monospace">km/h</text>
+    <text x="70" y="88" text-anchor="middle" fill="#64748b" font-size="8" font-family="monospace">${dirDisplay}</text>
+  </svg>`;
+}
+
+async function cargarTodasEstaciones(){
+  const icaos = ESTACIONES.map(e => e.icao).join(',');
+  try {
+    const res = await fetch(`https://api.checkwx.com/metar/${icaos}/decoded`, {
+      headers: {'X-API-Key': CHECKWX_KEY}
+    });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    ESTACIONES.forEach(({icao, nombre}) => {
+      const card = document.querySelector(`.st-card[data-icao="${icao}"]`);
+      const m = data.data && data.data.find(d => (d.icao || d.icaoId || d.station?.icao) === icao);
+
+      if(!m){
+        card.innerHTML = `
+          <div class="st-name">${nombre}</div>
+          <div class="st-meta">${icao} · sin reporte</div>
+          <div class="st-error">Sin METAR disponible ahora mismo</div>
+        `;
+        return;
+      }
+
+      const dir = m.wind && m.wind.degrees !== undefined ? m.wind.degrees : null;
+      const variable = !!(m.wind && m.wind.variable);
+      const ktSost = m.wind && m.wind.speed_kts !== undefined ? m.wind.speed_kts : 0;
+      const ktRaf = m.wind && m.wind.gust_kts !== undefined ? m.wind.gust_kts : null;
+      const kmhSost = ktToKmh(ktSost);
+      const kmhRaf = ktToKmh(ktRaf);
+      const temp = m.temperature && m.temperature.celsius !== undefined ? Math.round(m.temperature.celsius) : null;
+      const qnh = m.barometer && m.barometer.hpa !== undefined ? Math.round(m.barometer.hpa) : null;
+      const visMt = m.visibility && m.visibility.meters_float !== undefined ? m.visibility.meters_float : null;
+      const visKm = visMt != null ? (visMt >= 9999 ? '10km+' : (visMt/1000).toFixed(1)+'km') : '--';
+      const cls = clasificarViento(ktSost, ktRaf);
+      const rafColor = kmhRaf && kmhRaf > 50 ? 'hot' : '';
+
+      card.className = 'st-card lvl-'+cls.nivel;
+      card.innerHTML =
+        '<div class="st-name">'+nombre+'</div>' +
+        '<div class="st-meta">'+icao+' · '+formatHora(m.observed)+'</div>' +
+        renderClock(dir, kmhSost, cls.nivel, variable) +
+        '<div class="st-mini">' +
+          '<div class="cell"><div class="k">RÁFAGA</div><div class="v '+(rafColor)+'">'+(kmhRaf!=null?kmhRaf+' km/h':'---')+'</div></div>' +
+          '<div class="cell"><div class="k">TEMP</div><div class="v">'+(temp!=null?temp+'°C':'--')+'</div></div>' +
+          '<div class="cell"><div class="k">VIS</div><div class="v">'+visKm+'</div></div>' +
+          '<div class="cell"><div class="k">QNH</div><div class="v">'+(qnh!=null?qnh+' hPa':'--')+'</div></div>' +
+        '</div>' +
+        '<div class="st-badge '+cls.nivel+'">'+cls.label+'</div>';
+    });
+
+  } catch(err) {
+    ESTACIONES.forEach(function(e){
+      const card = document.querySelector('.st-card[data-icao="'+e.icao+'"]');
+      if(card && !card.querySelector('.st-clock')){
+        card.innerHTML =
+          '<div class="st-name">'+e.nombre+'</div>' +
+          '<div class="st-meta">'+e.icao+' · sin conexión</div>' +
+          '<div class="st-error">Sin datos · reintentando en 2 min</div>';
+      }
+    });
+    setTimeout(cargarTodasEstaciones, 2*60*1000);
+  }
+}
+
+cargarTodasEstaciones();
+setInterval(cargarTodasEstaciones, 15*60*1000);
+
+function updateClock(){
+  const n = new Date();
+  const utc = String(n.getUTCHours()).padStart(2,'0')+':'+String(n.getUTCMinutes()).padStart(2,'0');
+  const loc = String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+  document.getElementById('utcTime').textContent = utc + 'Z';
+  document.getElementById('localTime').textContent = loc + ' local';
+}
+updateClock();
+setInterval(updateClock, 30000);
+
+function ogimetCorrida(offsetDays){
+  const ahora = new Date();
+  const utc = new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), ahora.getUTCDate(), ahora.getUTCHours()));
+  utc.setUTCHours(utc.getUTCHours() - 12);
+  const h = utc.getUTCHours();
+  if (h >= 12) utc.setUTCHours(12, 0, 0, 0); else utc.setUTCHours(0, 0, 0, 0);
+  if (offsetDays) utc.setUTCDate(utc.getUTCDate() + offsetDays);
+  return utc;
+}
+
+function fmtDate(d){ return d.getUTCFullYear()+String(d.getUTCMonth()+1).padStart(2,'0')+String(d.getUTCDate()).padStart(2,'0'); }
+function fmtValid(d){
+  const dd = String(d.getUTCDate()).padStart(2,'0');
+  const meses = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+  return `${dd}/${meses[d.getUTCMonth()]} ${String(d.getUTCHours()).padStart(2,'0')}Z`;
+}
+
+function ogimetUrl(corrida, proyH, zona='AR00'){
+  const date = fmtDate(corrida);
+  const run = String(corrida.getUTCHours()).padStart(2,'0');
+  return `https://www.ogimet.com/show_foremaps.php?lang=es&date=${date}&drun=${date}_${run}&run=${run}&zone=${zona}&niv=SFC&proy=${String(proyH).padStart(3,'0')}`;
+}
+
+function ogimetImgUrl(corrida, proyH, zona='AR00'){
+  const date = fmtDate(corrida);
+  const run = String(corrida.getUTCHours()).padStart(2,'0');
+  const proy = String(proyH).padStart(3,'0');
+  return `https://www.ogimet.com/forecasts/${date}_${run}/SFC/${date}${run}H${proy}_${zona}_SFC.jpg`;
+}
+
+function schematicMapa(variant){
+  const svgs = {
+    ayer: `<svg viewBox="0 0 100 100">
+      <path d="M5,30 Q25,25 50,35 T95,28" stroke="#22d3ee" stroke-width="0.6" fill="none"/>
+      <path d="M5,45 Q25,42 50,50 T95,43" stroke="#22d3ee" stroke-width="0.6" fill="none"/>
+      <path d="M5,60 Q25,58 50,65 T95,58" stroke="#22d3ee" stroke-width="0.6" fill="none"/>
+      <path d="M5,75 Q25,73 50,80 T95,73" stroke="#22d3ee" stroke-width="0.6" fill="none"/>
+      <circle cx="40" cy="50" r="3" fill="#ef4444"/>
+      <text x="40" y="52" text-anchor="middle" fill="#fff" font-size="4" font-weight="500">B</text>
+      <circle cx="75" cy="35" r="2.5" fill="#4ade80"/>
+      <text x="75" y="37" text-anchor="middle" fill="#fff" font-size="3.5" font-weight="500">A</text>
+    </svg>`,
+    ahora: `<svg viewBox="0 0 100 100">
+      <path d="M5,25 Q25,18 50,30 T95,22" stroke="#22d3ee" stroke-width="0.8" fill="none"/>
+      <path d="M5,40 Q25,34 50,44 T95,38" stroke="#22d3ee" stroke-width="0.8" fill="none"/>
+      <path d="M5,55 Q25,50 50,60 T95,53" stroke="#22d3ee" stroke-width="0.8" fill="none"/>
+      <path d="M5,72 Q25,68 50,78 T95,70" stroke="#22d3ee" stroke-width="0.8" fill="none"/>
+      <circle cx="35" cy="45" r="4" fill="#ef4444"/>
+      <text x="35" y="47" text-anchor="middle" fill="#fff" font-size="4.5" font-weight="500">B</text>
+    </svg>`,
+    manana: `<svg viewBox="0 0 100 100">
+      <path d="M5,28 Q25,22 50,32 T95,26" stroke="#22d3ee" stroke-width="0.6" fill="none"/>
+      <path d="M5,44 Q25,40 50,50 T95,44" stroke="#22d3ee" stroke-width="0.6" fill="none"/>
+      <path d="M5,62 Q25,58 50,68 T95,60" stroke="#22d3ee" stroke-width="0.6" fill="none"/>
+      <circle cx="55" cy="40" r="3" fill="#ef4444" opacity=".8"/>
+      <text x="55" y="42" text-anchor="middle" fill="#fff" font-size="4" font-weight="500">B</text>
+    </svg>`,
+    smn: `<svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <pattern id="alertPattern" patternUnits="userSpaceOnUse" width="4" height="4" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="4" stroke="#ef4444" stroke-width="1" opacity="0.3"/>
+        </pattern>
+      </defs>
+      <path d="M25,10 L72,10 L78,22 L80,40 L78,58 L74,75 L65,88 L50,94 L38,92 L28,80 L22,62 L20,42 L22,25 Z" fill="#1a2538" stroke="#64748b" stroke-width="0.5"/>
+      <path d="M25,55 L78,55 L76,72 L65,88 L50,94 L38,92 L28,80 L22,62 Z" fill="#ef4444" opacity="0.45"/>
+      <path d="M25,55 L78,55 L76,72 L65,88 L50,94 L38,92 L28,80 L22,62 Z" fill="url(#alertPattern)"/>
+      <path d="M25,30 L78,30 L78,55 L22,55 L22,40 Z" fill="#eab308" opacity="0.35"/>
+      <circle cx="56" cy="87" r="1.8" fill="#fff"/>
+      <text x="56" y="92" text-anchor="middle" fill="#fff" font-size="3.2" font-family="monospace" font-weight="500">Gallegos</text>
+      <circle cx="62" cy="42" r="1.5" fill="#fff"/>
+      <text x="62" y="38" text-anchor="middle" fill="#fff" font-size="2.8" font-family="monospace">Deseado</text>
+      <circle cx="38" cy="72" r="1.4" fill="#fff"/>
+      <text x="38" y="77" text-anchor="middle" fill="#fff" font-size="2.6" font-family="monospace">Calafate</text>
+      <circle cx="48" cy="62" r="1.4" fill="#fff"/>
+      <text x="48" y="67" text-anchor="middle" fill="#fff" font-size="2.6" font-family="monospace">Gregores</text>
+      <text x="50" y="20" text-anchor="middle" fill="#94a3b8" font-size="4" font-family="sans-serif" font-weight="500">SANTA CRUZ</text>
+    </svg>`
+  };
+  return `<div class="schematic">${svgs[variant] || svgs.ahora}</div>`;
+}
+
+function armarMapa({title, date, variant, isCurrent, isDrake, url, imgUrl}){
+  const cls = isCurrent ? 'current' : (isDrake ? 'drake' : '');
+  const label = isDrake
+    ? 'Paso Drake · sistemas entrantes · click para abrir'
+    : 'Patagonia · GFS · click para abrir Ogimet';
+
+  const body = imgUrl ? `
+    <img src="${imgUrl}" alt="${title}" loading="lazy"
+         onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+    <div class="schematic" style="display:none">${schematicMapa(variant).replace(/^<div class="schematic">|<\/div>$/g,'')}</div>
+  ` : schematicMapa(variant);
+
+  return `
+    <a class="mp-card ${cls}" href="${url}" target="_blank" rel="noopener">
+      <div class="mp-head">
+        <span class="mp-title">${title}</span>
+        <span class="mp-date">${date}</span>
+      </div>
+      <div class="mp-body">${body}</div>
+      <div class="mp-foot">${label}</div>
+    </a>
+  `;
+}
+
+const corridaHoy = ogimetCorrida(0);
+const corridaAyer = ogimetCorrida(-1);
+
+const validAyer   = new Date(corridaAyer.getTime() + 24*3600*1000);
+const validHoy    = new Date(corridaHoy.getTime()  + 12*3600*1000);
+const validManana = new Date(corridaHoy.getTime()  + 36*3600*1000);
+const validDrake  = new Date(corridaHoy.getTime()  + 12*3600*1000);
+
+const mapasHtml = [
+  armarMapa({
+    title: 'AYER · -24H',
+    date: fmtValid(validAyer),
+    variant: 'ayer',
+    url:    ogimetUrl(corridaAyer, 24, 'AR00'),
+    imgUrl: ogimetImgUrl(corridaAyer, 24, 'AR00')
+  }),
+  armarMapa({
+    title: 'HOY · +12H',
+    date: fmtValid(validHoy),
+    variant: 'ahora',
+    isCurrent: true,
+    url:    ogimetUrl(corridaHoy, 12, 'AR00'),
+    imgUrl: ogimetImgUrl(corridaHoy, 12, 'AR00')
+  }),
+  armarMapa({
+    title: 'MAÑANA · +36H',
+    date: fmtValid(validManana),
+    variant: 'manana',
+    url:    ogimetUrl(corridaHoy, 36, 'AR00'),
+    imgUrl: ogimetImgUrl(corridaHoy, 36, 'AR00')
+  }),
+  armarMapa({
+    title: 'PASO DRAKE',
+    date: fmtValid(validDrake),
+    variant: 'ahora',
+    isDrake: true,
+    url:    ogimetUrl(corridaHoy, 12, 'AN00'),
+    imgUrl: ogimetImgUrl(corridaHoy, 12, 'AN00')
+  }),
+].join('');
+
+document.getElementById('mpGrid').innerHTML = mapasHtml;
+</script>
+
+</body>
+</html>
