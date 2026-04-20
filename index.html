@@ -242,7 +242,7 @@ async function cargarTodasEstaciones(){
 
     ESTACIONES.forEach(({icao, nombre}) => {
       const card = document.querySelector(`.st-card[data-icao="${icao}"]`);
-      const m = data.data && data.data.find(d => d.icaoId === icao);
+      const m = data.data && data.data.find(d => (d.icao || d.icaoId || d.station?.icao) === icao);
 
       if(!m){
         card.innerHTML = `
