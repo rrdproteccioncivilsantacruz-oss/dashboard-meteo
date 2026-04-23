@@ -190,7 +190,7 @@ function renderClock(dir, kmhViento, nivel, variable){
   const dirDisplay = variable ? 'VAR' : (dir!=null ? dir+'°' : '---');
   
   let needleHtml = '';
-  if (variable || dir == null || kt < 1) {
+  if (variable || dir == null || kmhViento < 2) {
     needleHtml = `<circle cx="70" cy="70" r="5" fill="none" stroke="${color}" stroke-width="1.2" stroke-dasharray="2 2" opacity=".6"/>`;
   } else {
     const rotAngle = dir;
@@ -234,15 +234,15 @@ function renderClock(dir, kmhViento, nivel, variable){
 async function cargarTodasEstaciones(){
   const icaos = ESTACIONES.map(e => e.icao).join(',');
   try {
-    const res = await fetch(`https://api.checkwx.com/metar/${icaos}/decoded`, {
+    const res = await fetch(`https://api.checkwxapi.com/metar/${icaos}/decoded`, {
       headers: {'X-API-Key': CHECKWX_KEY}
     });
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    if(!res.ok) throw new Error(`HTTP ${res.status} – ${res.statusText}`);
     const data = await res.json();
 
     ESTACIONES.forEach(({icao, nombre}) => {
       const card = document.querySelector(`.st-card[data-icao="${icao}"]`);
-      const m = data.data && data.data.find(d => (d.icao || d.icaoId || d.station?.icao) === icao);
+      const m = data.data && data.data.find(d => d.icaoId === icao);
 
       if(!m){
         card.innerHTML = `
@@ -287,7 +287,7 @@ async function cargarTodasEstaciones(){
         card.innerHTML =
           '<div class="st-name">'+e.nombre+'</div>' +
           '<div class="st-meta">'+e.icao+' · sin conexión</div>' +
-          '<div class="st-error">Sin datos · reintentando en 2 min</div>';
+          '<div class="st-error">'+err.message+' · reintentando en 2 min</div>';
       }
     });
     setTimeout(cargarTodasEstaciones, 2*60*1000);
