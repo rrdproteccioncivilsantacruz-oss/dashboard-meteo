@@ -149,14 +149,16 @@ footer a{color:var(--accent2);text-decoration:none}
 </div>
 
 <footer>
-  Fuentes: <strong>CheckWX</strong> (<a href="https://www.checkwxapi.com" target="_blank">checkwxapi.com</a>) ·
+  Fuentes: <strong>NOAA / aviationweather.gov</strong> ·
   <strong>Ogimet</strong> · <strong>SMN Argentina</strong> · <strong>NOAA GFS</strong><br>
   Subsecretaría de Protección Civil y Abordaje Integral de Emergencias y Catástrofes — Santa Cruz<br>
   Gobernador Lista 327, Río Gallegos · 103 / 420042 / 435422
 </footer>
 
 <script>
-const CHECKWX_KEY = 'a9172094849d42ff82cbd41e17a532df';
+// ─── FUENTE: NOAA aviationweather.gov (sin API key, via proxy CORS) ──────────
+// Proxy: corsproxy.io — gratuito, sin registro, sin límites prácticos
+// Fallback: allorigins.win si el primero falla
 
 const ESTACIONES = [
   {icao:'SAWG', nombre:'RÍO GALLEGOS'},
@@ -179,30 +181,68 @@ function colorPorNivel(nivel){
   return {red:'#ef4444', orange:'#ea580c', yellow:'#eab308', green:'#4ade80'}[nivel] || '#64748b';
 }
 
-function formatHora(iso){
-  if(!iso) return '--:--Z';
-  const d = new Date(iso);
-  return String(d.getUTCDate()).padStart(2,'0')+' '+String(d.getUTCHours()).padStart(2,'0')+':'+String(d.getUTCMinutes()).padStart(2,'0')+'Z';
+function formatHoraNoaa(isoStr){
+  if(!isoStr) return '--:--Z';
+  const d = new Date(isoStr);
+  return String(d.getUTCDate()).padStart(2,'0')+' '+
+         String(d.getUTCHours()).padStart(2,'0')+':'+
+         String(d.getUTCMinutes()).padStart(2,'0')+'Z';
+}
+
+// ─── Parser de METAR crudo ────────────────────────────────────────────────────
+// Extrae: wdir, wspd(kt), wgst(kt), temp(°C), altim(hPa), visib(km), obsTime
+function parsearMetarCrudo(raw){
+  if(!raw) return null;
+  const r = {};
+
+  // Viento: 18015G25KT  |  VRB10KT  |  00000KT
+  const wm = raw.match(/\b(VRB|(\d{3}))(\d{2,3})(G(\d{2,3}))?KT\b/);
+  if(wm){
+    r.variable = wm[1] === 'VRB';
+    r.wdir = r.variable ? null : parseInt(wm[2]);
+    r.wspd = parseInt(wm[3]);
+    r.wgst = wm[5] ? parseInt(wm[5]) : null;
+  }
+
+  // Temperatura/rocío: 08/03  |  M02/M08
+  const tm = raw.match(/\b(M?)(\d{2})\/(M?\d{2})\b/);
+  if(tm) r.temp = (tm[1]==='M'?-1:1)*parseInt(tm[2]);
+
+  // Altímetro: Q1013 (hPa) | A2992 (inHg→hPa)
+  const qm = raw.match(/\bQ(\d{4})\b/);
+  if(qm) r.qnh = parseInt(qm[1]);
+  else {
+    const am = raw.match(/\bA(\d{4})\b/);
+    if(am) r.qnh = Math.round(parseInt(am[1]) * 0.338639 * 10) / 10;
+  }
+
+  // Visibilidad: 9999 | 8000 | 1200 (metros) | 10SM (millas → km)
+  const vm = raw.match(/\b(\d{4})\b/);
+  if(vm){ const m = parseInt(vm[1]); r.visKm = m >= 9999 ? '10km+' : (m/1000).toFixed(1)+'km'; }
+  else {
+    const sm = raw.match(/\b(\d+(?:\/\d+)?)SM\b/);
+    if(sm) r.visKm = (parseFloat(sm[1])*1.60934).toFixed(1)+'km';
+  }
+
+  return r;
 }
 
 function renderClock(dir, kmhViento, nivel, variable){
   const color = colorPorNivel(nivel);
   const dirDisplay = variable ? 'VAR' : (dir!=null ? dir+'°' : '---');
-  
+  const kmhDisplay = kmhViento == null ? '--' : Math.round(kmhViento);
+
   let needleHtml = '';
-  if (variable || dir == null || kmhViento < 2) {
+  if(variable || dir == null || kmhViento < 2){
     needleHtml = `<circle cx="70" cy="70" r="5" fill="none" stroke="${color}" stroke-width="1.2" stroke-dasharray="2 2" opacity=".6"/>`;
   } else {
-    const rotAngle = dir;
     needleHtml = `
-      <g transform="rotate(${rotAngle} 70 70)">
+      <g transform="rotate(${dir} 70 70)">
         <line x1="70" y1="70" x2="70" y2="22" stroke="${color}" stroke-width="3.5" stroke-linecap="round"/>
         <polygon points="70,18 65,28 75,28" fill="${color}"/>
       </g>`;
   }
-  
-  const kmhDisplay = kmhViento == null ? '--' : Math.round(kmhViento);
-  
+
   return `
   <svg class="st-clock" viewBox="0 0 140 140">
     <circle cx="70" cy="70" r="65" fill="#0a0e14" stroke="#2a3a52" stroke-width="2"/>
@@ -231,67 +271,100 @@ function renderClock(dir, kmhViento, nivel, variable){
   </svg>`;
 }
 
-async function cargarTodasEstaciones(){
-  const icaos = ESTACIONES.map(e => e.icao).join(',');
-  try {
-    const res = await fetch(`https://api.checkwxapi.com/metar/${icaos}/decoded`, {
-      headers: {'X-API-Key': CHECKWX_KEY}
-    });
-    if(!res.ok) throw new Error(`HTTP ${res.status} – ${res.statusText}`);
-    const data = await res.json();
-
-    ESTACIONES.forEach(({icao, nombre}) => {
-      const card = document.querySelector(`.st-card[data-icao="${icao}"]`);
-      const m = data.data && data.data.find(d => d.icaoId === icao);
-
-      if(!m){
-        card.innerHTML = `
-          <div class="st-name">${nombre}</div>
-          <div class="st-meta">${icao} · sin reporte</div>
-          <div class="st-error">Sin METAR disponible ahora mismo</div>
-        `;
-        return;
-      }
-
-      const dir = m.wind && m.wind.degrees !== undefined ? m.wind.degrees : null;
-      const variable = !!(m.wind && m.wind.variable);
-      const ktSost = m.wind && m.wind.speed_kts !== undefined ? m.wind.speed_kts : 0;
-      const ktRaf = m.wind && m.wind.gust_kts !== undefined ? m.wind.gust_kts : null;
-      const kmhSost = ktToKmh(ktSost);
-      const kmhRaf = ktToKmh(ktRaf);
-      const temp = m.temperature && m.temperature.celsius !== undefined ? Math.round(m.temperature.celsius) : null;
-      const qnh = m.barometer && m.barometer.hpa !== undefined ? Math.round(m.barometer.hpa) : null;
-      const visMt = m.visibility && m.visibility.meters_float !== undefined ? m.visibility.meters_float : null;
-      const visKm = visMt != null ? (visMt >= 9999 ? '10km+' : (visMt/1000).toFixed(1)+'km') : '--';
-      const cls = clasificarViento(ktSost, ktRaf);
-      const rafColor = kmhRaf && kmhRaf > 50 ? 'hot' : '';
-
-      card.className = 'st-card lvl-'+cls.nivel;
-      card.innerHTML =
-        '<div class="st-name">'+nombre+'</div>' +
-        '<div class="st-meta">'+icao+' · '+formatHora(m.observed)+'</div>' +
-        renderClock(dir, kmhSost, cls.nivel, variable) +
-        '<div class="st-mini">' +
-          '<div class="cell"><div class="k">RÁFAGA</div><div class="v '+(rafColor)+'">'+(kmhRaf!=null?kmhRaf+' km/h':'---')+'</div></div>' +
-          '<div class="cell"><div class="k">TEMP</div><div class="v">'+(temp!=null?temp+'°C':'--')+'</div></div>' +
-          '<div class="cell"><div class="k">VIS</div><div class="v">'+visKm+'</div></div>' +
-          '<div class="cell"><div class="k">QNH</div><div class="v">'+(qnh!=null?qnh+' hPa':'--')+'</div></div>' +
-        '</div>' +
-        '<div class="st-badge '+cls.nivel+'">'+cls.label+'</div>';
-    });
-
-  } catch(err) {
-    ESTACIONES.forEach(function(e){
-      const card = document.querySelector('.st-card[data-icao="'+e.icao+'"]');
-      if(card && !card.querySelector('.st-clock')){
-        card.innerHTML =
-          '<div class="st-name">'+e.nombre+'</div>' +
-          '<div class="st-meta">'+e.icao+' · sin conexión</div>' +
-          '<div class="st-error">'+err.message+' · reintentando en 2 min</div>';
-      }
-    });
-    setTimeout(cargarTodasEstaciones, 2*60*1000);
+function mostrarError(icao, nombre, msg){
+  const card = document.querySelector('.st-card[data-icao="'+icao+'"]');
+  if(card && !card.querySelector('.st-clock')){
+    card.innerHTML =
+      '<div class="st-name">'+nombre+'</div>'+
+      '<div class="st-meta">'+icao+' · sin conexión</div>'+
+      '<div class="st-error">'+msg+'</div>';
   }
+}
+
+async function fetchConProxy(url){
+  // Intenta proxy 1: corsproxy.io
+  try {
+    const r = await fetch('https://corsproxy.io/?'+encodeURIComponent(url));
+    if(r.ok) return r;
+  } catch(e){}
+  // Fallback proxy 2: allorigins.win
+  const r2 = await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent(url));
+  if(r2.ok) return r2;
+  throw new Error('Proxies no disponibles');
+}
+
+async function cargarEstacion({icao, nombre}){
+  const url = `https://aviationweather.gov/api/data/metar?ids=${icao}&format=json&taf=false`;
+  try {
+    const res = await fetchConProxy(url);
+    const data = await res.json();
+    const card = document.querySelector('.st-card[data-icao="'+icao+'"]');
+
+    if(!data || !data.length){
+      card.innerHTML =
+        '<div class="st-name">'+nombre+'</div>'+
+        '<div class="st-meta">'+icao+' · sin reporte</div>'+
+        '<div class="st-error">Sin METAR disponible ahora</div>';
+      return;
+    }
+
+    const obs = data[0];
+    const raw = obs.rawOb || '';
+
+    // Valores decodificados por NOAA (preferidos) con fallback al parser crudo
+    const wdir     = obs.wdir !== undefined && obs.wdir !== null ? obs.wdir : null;
+    const varWind  = (obs.wdir === 0 && obs.wspd === 0) ? false : (raw.includes('VRB') ? true : false);
+    const ktSost   = obs.wspd !== undefined && obs.wspd !== null ? obs.wspd : 0;
+    const ktRaf    = obs.wgst !== undefined && obs.wgst !== null ? obs.wgst : null;
+
+    let temp = obs.temp !== undefined && obs.temp !== null ? Math.round(obs.temp) : null;
+    let qnh  = obs.altim !== undefined && obs.altim !== null ? Math.round(obs.altim) : null;
+
+    // visib: NOAA devuelve "10+" o número en millas
+    let visKm = '--';
+    if(obs.visib !== undefined && obs.visib !== null){
+      const v = String(obs.visib);
+      if(v === '10+' || parseFloat(v) >= 10) visKm = '10km+';
+      else visKm = (parseFloat(v)*1.60934).toFixed(1)+'km';
+    }
+
+    // Fallback parser crudo si faltan datos
+    if(temp === null || qnh === null || visKm === '--'){
+      const p = parsearMetarCrudo(raw);
+      if(p){
+        if(temp === null && p.temp !== undefined) temp = p.temp;
+        if(qnh === null && p.qnh !== undefined) qnh = p.qnh;
+        if(visKm === '--' && p.visKm) visKm = p.visKm;
+      }
+    }
+
+    const kmhSost = ktToKmh(ktSost);
+    const kmhRaf  = ktToKmh(ktRaf);
+    const cls = clasificarViento(ktSost, ktRaf);
+    const rafColor = kmhRaf && kmhRaf > 50 ? 'hot' : '';
+    const hora = formatHoraNoaa(obs.reportTime || obs.obsTime);
+
+    card.className = 'st-card lvl-'+cls.nivel;
+    card.innerHTML =
+      '<div class="st-name">'+nombre+'</div>'+
+      '<div class="st-meta">'+icao+' · '+hora+'</div>'+
+      renderClock(wdir, kmhSost, cls.nivel, varWind)+
+      '<div class="st-mini">'+
+        '<div class="cell"><div class="k">RÁFAGA</div><div class="v '+(rafColor)+'">'+(kmhRaf!=null?kmhRaf+' km/h':'---')+'</div></div>'+
+        '<div class="cell"><div class="k">TEMP</div><div class="v">'+(temp!=null?temp+'°C':'--')+'</div></div>'+
+        '<div class="cell"><div class="k">VIS</div><div class="v">'+visKm+'</div></div>'+
+        '<div class="cell"><div class="k">QNH</div><div class="v">'+(qnh!=null?qnh+' hPa':'--')+'</div></div>'+
+      '</div>'+
+      '<div class="st-badge '+cls.nivel+'">'+cls.label+'</div>';
+
+  } catch(err){
+    mostrarError(icao, nombre, err.message+' · reintentando en 2 min');
+    setTimeout(() => cargarEstacion({icao, nombre}), 2*60*1000);
+  }
+}
+
+async function cargarTodasEstaciones(){
+  await Promise.allSettled(ESTACIONES.map(cargarEstacion));
 }
 
 cargarTodasEstaciones();
