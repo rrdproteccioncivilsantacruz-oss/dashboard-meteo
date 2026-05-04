@@ -281,23 +281,32 @@ function mostrarError(icao, nombre, msg){
   }
 }
 
-async function fetchConProxy(url){
-  // Intenta proxy 1: corsproxy.io
+async function fetchJson(url){
+  // Proxy 1: allorigins /get — devuelve JSON con .contents ya descomprimido
   try {
-    const r = await fetch('https://corsproxy.io/?'+encodeURIComponent(url));
-    if(r.ok) return r;
+    const r = await fetch('https://api.allorigins.win/get?url='+encodeURIComponent(url));
+    if(r.ok){
+      const w = await r.json();
+      if(w && w.contents) return JSON.parse(w.contents);
+    }
   } catch(e){}
-  // Fallback proxy 2: allorigins.win
-  const r2 = await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent(url));
-  if(r2.ok) return r2;
+  // Proxy 2: corsproxy.io con Accept-Encoding: identity para evitar gzip
+  try {
+    const r2 = await fetch('https://corsproxy.io/?'+encodeURIComponent(url), {
+      headers: {'Accept-Encoding': 'identity'}
+    });
+    if(r2.ok){
+      const txt = await r2.text();
+      return JSON.parse(txt);
+    }
+  } catch(e){}
   throw new Error('Proxies no disponibles');
 }
 
 async function cargarEstacion({icao, nombre}){
   const url = `https://aviationweather.gov/api/data/metar?ids=${icao}&format=json&taf=false`;
   try {
-    const res = await fetchConProxy(url);
-    const data = await res.json();
+    const data = await fetchJson(url);
     const card = document.querySelector('.st-card[data-icao="'+icao+'"]');
 
     if(!data || !data.length){
