@@ -290,50 +290,63 @@ function mostrarError(icao, nombre, msg){
   }
 }
 
-// ─── FUENTE: metar.json generado por GitHub Actions cada 15 min ─────────────
-// Sin proxies, sin API keys, sin límites — NOAA → repo → HTML
+// ─── FUENTE: NOAA aviationweather.gov via proxies CORS ──────────────────────
+// Proxy 1: allorigins.win · Proxy 2: corsproxy.io · Proxy 3: thingproxy
+
+async function fetchJson(url){
+  // Proxy 1: allorigins /get — wrapper JSON, sin problemas de gzip
+  try {
+    const r = await fetch('https://api.allorigins.win/get?url='+encodeURIComponent(url),
+      {signal: AbortSignal.timeout(8000)});
+    if(r.ok){
+      const w = await r.json();
+      if(w && w.contents && w.contents.trim().startsWith('['))
+        return JSON.parse(w.contents);
+    }
+  } catch(e){}
+  // Proxy 2: corsproxy.io sin compresión
+  try {
+    const r2 = await fetch('https://corsproxy.io/?'+encodeURIComponent(url), {
+      headers:{'Accept-Encoding':'identity'},
+      signal: AbortSignal.timeout(8000)
+    });
+    if(r2.ok){ const t=await r2.text(); return JSON.parse(t); }
+  } catch(e){}
+  // Proxy 3: thingproxy
+  try {
+    const r3 = await fetch('https://thingproxy.freeboard.io/fetch/'+url,
+      {signal: AbortSignal.timeout(8000)});
+    if(r3.ok){ const t=await r3.text(); return JSON.parse(t); }
+  } catch(e){}
+  throw new Error('Sin conexión · reintentando en 2 min');
+}
+
+async function cargarEstacionProxy({icao, nombre}){
+  const url = `https://aviationweather.gov/api/data/metar?ids=${icao}&format=json&taf=false`;
+  const card = document.querySelector('.st-card[data-icao="'+icao+'"]');
+  try {
+    const data = await fetchJson(url);
+    if(!data || !data.length){
+      card.innerHTML =
+        '<div class="st-name">'+nombre+'</div>'+
+        '<div class="st-meta">'+icao+' · sin reporte</div>'+
+        '<div class="st-error">Sin METAR disponible ahora</div>';
+      return;
+    }
+    renderEstacion(card, icao, nombre, data[0]);
+  } catch(err){
+    if(card && !card.querySelector('.st-clock')){
+      card.innerHTML =
+        '<div class="st-name">'+nombre+'</div>'+
+        '<div class="st-meta">'+icao+' · sin conexión</div>'+
+        '<div class="st-error">'+err.message+'</div>';
+    }
+    setTimeout(() => cargarEstacionProxy({icao, nombre}), 2*60*1000);
+  }
+}
 
 async function cargarTodasEstaciones(){
-  try {
-    // Cache-bust con timestamp redondeado a 15 min para no pedir siempre el mismo
-    const t15 = Math.floor(Date.now() / 900000);
-    const res = await fetch(`metar.json?v=${t15}`);
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
-
-    // Mostrar timestamp de última actualización en el label
-    if(json.updated){
-      const upd = new Date(json.updated);
-      const hhmm = String(upd.getUTCHours()).padStart(2,'0')+':'+String(upd.getUTCMinutes()).padStart(2,'0');
-      const lbl = document.querySelector('.section-label');
-      if(lbl) lbl.textContent = '4 estaciones · última actualización METAR: '+hhmm+'Z';
-    }
-
-    ESTACIONES.forEach(({icao, nombre}) => {
-      const card = document.querySelector('.st-card[data-icao="'+icao+'"]');
-      const obs = json.data && json.data.find(d => d.icaoId === icao);
-      if(!obs){
-        card.innerHTML =
-          '<div class="st-name">'+nombre+'</div>'+
-          '<div class="st-meta">'+icao+' · sin reporte</div>'+
-          '<div class="st-error">Sin METAR en el archivo · el Action puede estar iniciando</div>';
-        return;
-      }
-      renderEstacion(card, icao, nombre, obs);
-    });
-
-  } catch(err){
-    ESTACIONES.forEach(({icao, nombre}) => {
-      const card = document.querySelector('.st-card[data-icao="'+icao+'"]');
-      if(card && !card.querySelector('.st-clock')){
-        card.innerHTML =
-          '<div class="st-name">'+nombre+'</div>'+
-          '<div class="st-meta">'+icao+' · sin conexión</div>'+
-          '<div class="st-error">'+err.message+' · reintentando en 2 min</div>';
-      }
-    });
-    setTimeout(cargarTodasEstaciones, 2*60*1000);
-  }
+  await Promise.allSettled(ESTACIONES.map(cargarEstacionProxy));
 }
 
 function renderEstacion(card, icao, nombre, obs){
