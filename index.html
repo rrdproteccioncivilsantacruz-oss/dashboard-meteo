@@ -52,8 +52,11 @@ header{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var
 
 .st-error{font-size:10px;color:var(--muted);padding:40px 0;font-family:'IBM Plex Mono'}
 
-.mp-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.mp-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
 .mp-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;text-decoration:none;color:inherit;display:flex;flex-direction:column;cursor:pointer;transition:.2s}
+.mp-card.windy{cursor:default}
+.mp-card.windy .mp-body{flex:1;aspect-ratio:unset !important;min-height:200px}
+.mp-card.windy .mp-body iframe{width:100%;height:100%;border:none;display:block}
 .mp-card:hover{border-color:var(--accent)}
 .mp-card.current{border-color:var(--accent);border-width:1.5px}
 .mp-card.smn{border-color:var(--danger);border-width:1.5px}
@@ -84,10 +87,17 @@ header{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var
 footer{margin-top:12px;padding:10px;text-align:center;color:var(--muted);font-family:'IBM Plex Mono';font-size:9px;border-top:1px solid var(--border);line-height:1.6}
 footer a{color:var(--accent2);text-decoration:none}
 
+/* Windy embebido como quinta carta en mp-grid */
+.mp-card.windy .mp-body{aspect-ratio:1/1;padding:0;overflow:hidden}
+.mp-card.windy iframe{width:100%;height:100%;border:none;display:block}
+
 .quick-links{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-top:10px}
 .quick-links a{background:var(--surface);border:1px solid var(--border);color:var(--muted);padding:6px 12px;border-radius:6px;text-decoration:none;font-family:'IBM Plex Mono';font-size:10px;letter-spacing:.5px;transition:.15s}
 .quick-links a:hover{border-color:var(--accent2);color:var(--accent2)}
 
+@media(max-width:1100px){
+  .mp-grid{grid-template-columns:repeat(3,1fr)}
+}
 @media(max-width:900px){
   .st-grid,.mp-grid{grid-template-columns:repeat(2,1fr)}
 }
@@ -135,7 +145,7 @@ footer a{color:var(--accent2);text-decoration:none}
   </div>
 </div>
 
-<div class="section-label">3 mapas patagonia (AR00) · 1 mapa paso drake (AN00) · GFS actualizado</div>
+<div class="section-label">4 mapas GFS Ogimet (AR00 · AN00) · Windy ECMWF · viento superficie</div>
 
 <div class="mp-grid" id="mpGrid"></div>
 
@@ -157,8 +167,7 @@ footer a{color:var(--accent2);text-decoration:none}
 
 <script>
 // ─── FUENTE: NOAA aviationweather.gov (sin API key, via proxy CORS) ──────────
-// Proxy: corsproxy.io — gratuito, sin registro, sin límites prácticos
-// Fallback: allorigins.win si el primero falla
+// Datos servidos desde metar.json — generado por GitHub Actions cada 15 min
 
 const ESTACIONES = [
   {icao:'SAWG', nombre:'RÍO GALLEGOS'},
@@ -281,55 +290,64 @@ function mostrarError(icao, nombre, msg){
   }
 }
 
-async function fetchJson(url){
-  // Proxy 1: allorigins /get — devuelve JSON con .contents ya descomprimido
+// ─── FUENTE: metar.json generado por GitHub Actions cada 15 min ─────────────
+// Sin proxies, sin API keys, sin límites — NOAA → repo → HTML
+
+async function cargarTodasEstaciones(){
   try {
-    const r = await fetch('https://api.allorigins.win/get?url='+encodeURIComponent(url));
-    if(r.ok){
-      const w = await r.json();
-      if(w && w.contents) return JSON.parse(w.contents);
+    // Cache-bust con timestamp redondeado a 15 min para no pedir siempre el mismo
+    const t15 = Math.floor(Date.now() / 900000);
+    const res = await fetch(`metar.json?v=${t15}`);
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+
+    // Mostrar timestamp de última actualización en el label
+    if(json.updated){
+      const upd = new Date(json.updated);
+      const hhmm = String(upd.getUTCHours()).padStart(2,'0')+':'+String(upd.getUTCMinutes()).padStart(2,'0');
+      const lbl = document.querySelector('.section-label');
+      if(lbl) lbl.textContent = '4 estaciones · última actualización METAR: '+hhmm+'Z';
     }
-  } catch(e){}
-  // Proxy 2: corsproxy.io con Accept-Encoding: identity para evitar gzip
-  try {
-    const r2 = await fetch('https://corsproxy.io/?'+encodeURIComponent(url), {
-      headers: {'Accept-Encoding': 'identity'}
+
+    ESTACIONES.forEach(({icao, nombre}) => {
+      const card = document.querySelector('.st-card[data-icao="'+icao+'"]');
+      const obs = json.data && json.data.find(d => d.icaoId === icao);
+      if(!obs){
+        card.innerHTML =
+          '<div class="st-name">'+nombre+'</div>'+
+          '<div class="st-meta">'+icao+' · sin reporte</div>'+
+          '<div class="st-error">Sin METAR en el archivo · el Action puede estar iniciando</div>';
+        return;
+      }
+      renderEstacion(card, icao, nombre, obs);
     });
-    if(r2.ok){
-      const txt = await r2.text();
-      return JSON.parse(txt);
-    }
-  } catch(e){}
-  throw new Error('Proxies no disponibles');
+
+  } catch(err){
+    ESTACIONES.forEach(({icao, nombre}) => {
+      const card = document.querySelector('.st-card[data-icao="'+icao+'"]');
+      if(card && !card.querySelector('.st-clock')){
+        card.innerHTML =
+          '<div class="st-name">'+nombre+'</div>'+
+          '<div class="st-meta">'+icao+' · sin conexión</div>'+
+          '<div class="st-error">'+err.message+' · reintentando en 2 min</div>';
+      }
+    });
+    setTimeout(cargarTodasEstaciones, 2*60*1000);
+  }
 }
 
-async function cargarEstacion({icao, nombre}){
-  const url = `https://aviationweather.gov/api/data/metar?ids=${icao}&format=json&taf=false`;
+function renderEstacion(card, icao, nombre, obs){
   try {
-    const data = await fetchJson(url);
-    const card = document.querySelector('.st-card[data-icao="'+icao+'"]');
-
-    if(!data || !data.length){
-      card.innerHTML =
-        '<div class="st-name">'+nombre+'</div>'+
-        '<div class="st-meta">'+icao+' · sin reporte</div>'+
-        '<div class="st-error">Sin METAR disponible ahora</div>';
-      return;
-    }
-
-    const obs = data[0];
     const raw = obs.rawOb || '';
 
-    // Valores decodificados por NOAA (preferidos) con fallback al parser crudo
-    const wdir     = obs.wdir !== undefined && obs.wdir !== null ? obs.wdir : null;
-    const varWind  = (obs.wdir === 0 && obs.wspd === 0) ? false : (raw.includes('VRB') ? true : false);
-    const ktSost   = obs.wspd !== undefined && obs.wspd !== null ? obs.wspd : 0;
-    const ktRaf    = obs.wgst !== undefined && obs.wgst !== null ? obs.wgst : null;
+    const wdir    = obs.wdir !== undefined && obs.wdir !== null ? obs.wdir : null;
+    const varWind = raw.includes('VRB') ? true : false;
+    const ktSost  = obs.wspd !== undefined && obs.wspd !== null ? obs.wspd : 0;
+    const ktRaf   = obs.wgst !== undefined && obs.wgst !== null ? obs.wgst : null;
 
     let temp = obs.temp !== undefined && obs.temp !== null ? Math.round(obs.temp) : null;
     let qnh  = obs.altim !== undefined && obs.altim !== null ? Math.round(obs.altim) : null;
 
-    // visib: NOAA devuelve "10+" o número en millas
     let visKm = '--';
     if(obs.visib !== undefined && obs.visib !== null){
       const v = String(obs.visib);
@@ -337,7 +355,6 @@ async function cargarEstacion({icao, nombre}){
       else visKm = (parseFloat(v)*1.60934).toFixed(1)+'km';
     }
 
-    // Fallback parser crudo si faltan datos
     if(temp === null || qnh === null || visKm === '--'){
       const p = parsearMetarCrudo(raw);
       if(p){
@@ -367,13 +384,11 @@ async function cargarEstacion({icao, nombre}){
       '<div class="st-badge '+cls.nivel+'">'+cls.label+'</div>';
 
   } catch(err){
-    mostrarError(icao, nombre, err.message+' · reintentando en 2 min');
-    setTimeout(() => cargarEstacion({icao, nombre}), 2*60*1000);
+    card.innerHTML =
+      '<div class="st-name">'+nombre+'</div>'+
+      '<div class="st-meta">'+icao+' · error</div>'+
+      '<div class="st-error">'+err.message+'</div>';
   }
-}
-
-async function cargarTodasEstaciones(){
-  await Promise.allSettled(ESTACIONES.map(cargarEstacion));
 }
 
 cargarTodasEstaciones();
@@ -535,7 +550,25 @@ const mapasHtml = [
   }),
 ].join('');
 
-document.getElementById('mpGrid').innerHTML = mapasHtml;
+// ── Carta Windy superficie como quinta columna ─────────────────────────────
+const windyCard = `
+  <div class="mp-card windy drake">
+    <div class="mp-head">
+      <span class="mp-title">WINDY · SUPERFICIE</span>
+      <span class="mp-date">ECMWF · km/h</span>
+    </div>
+    <div class="mp-body" style="aspect-ratio:unset;flex:1;min-height:0">
+      <iframe
+        src="https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=default&metricTemp=default&metricWind=km/h&zoom=5&overlay=wind&product=ecmwf&level=surface&lat=-51.634&lon=-69.22"
+        style="width:100%;height:100%;border:none;display:block"
+        loading="lazy"
+        title="Windy Patagonia Sur">
+      </iframe>
+    </div>
+    <div class="mp-foot">Viento tiempo real · click para abrir Windy</div>
+  </div>`;
+
+document.getElementById('mpGrid').innerHTML = mapasHtml + windyCard;
 </script>
 
 </body>
