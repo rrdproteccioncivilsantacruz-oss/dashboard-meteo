@@ -1,0 +1,64 @@
+name: Fetch METAR
+
+on:
+  schedule:
+    # Cada 15 minutos (GitHub Actions mínimo: 5 min)
+    - cron: '0,15,30,45 * * * *'
+  workflow_dispatch:  # permite correrlo manualmente
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Fetch METAR desde NOAA
+        run: |
+          echo "Fetching METAR para SAWG, SCBA, SAVC, SAWC..."
+          
+          curl -s \
+            -H "User-Agent: PCsantacruz-dashboard/2.0" \
+            "https://aviationweather.gov/api/data/metar?ids=SAWG,SCBA,SAVC,SAWC&format=json&taf=false" \
+            -o metar_raw.json
+          
+          # Verificar que es JSON válido y tiene datos
+          python3 - << 'EOF'
+          import json, sys, datetime
+
+          with open('metar_raw.json') as f:
+              raw = f.read().strip()
+
+          if not raw or raw.startswith('Host not'):
+              print("ERROR: respuesta inválida de NOAA")
+              sys.exit(1)
+
+          data = json.loads(raw)
+          print(f"Recibidos {len(data)} registros METAR")
+
+          # Empaquetar con timestamp de actualización
+          output = {
+              "updated": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "source": "NOAA aviationweather.gov",
+              "data": data
+          }
+
+          with open('metar.json', 'w') as f:
+              json.dump(output, f, separators=(',', ':'))
+
+          print("metar.json generado OK")
+          for obs in data:
+              print(f"  {obs.get('icaoId','?')} — {obs.get('rawOb','sin raw')}")
+          EOF
+
+      - name: Commit y push metar.json
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add metar.json
+          # Solo commitear si hubo cambios
+          git diff --staged --quiet || git commit -m "auto: METAR $(date -u '+%Y-%m-%d %H:%MZ')"
+          git push
